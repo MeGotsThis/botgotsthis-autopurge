@@ -3,6 +3,7 @@
 from typing import Optional, Tuple  # noqa: F401
 
 from lib.data import ChatCommandArgs
+from lib.database import DatabaseMain
 from lib.helper import timeout
 from lib.helper.chat import feature, min_args
 from lib.helper.chat import permission
@@ -13,8 +14,9 @@ from lib.helper import parser
 @permission('bannable')
 @permission('chatModerator')
 async def filterAutoPurge(args: ChatCommandArgs) -> bool:
+    db: DatabaseMain
     cursor: aioodbc.cursor.Cursor
-    async with await args.database.cursor() as cursor:
+    async with DatabaseMain.acquire() as db, await db.cursor() as cursor:
         query: str = '''
 SELECT stopcommands FROM auto_purge WHERE broadcaster=? AND twitchUser=?
 '''
@@ -36,8 +38,9 @@ SELECT stopcommands FROM auto_purge WHERE broadcaster=? AND twitchUser=?
 async def commandSetAutoPurge(args: ChatCommandArgs) -> bool:
     twitchUser: str = args.message.lower[1]
     nick: str = args.message[1]
+    db: DatabaseMain
     cursor: aioodbc.cursor.Cursor
-    async with await args.database.cursor() as cursor:
+    async with DatabaseMain.acquire() as db, await db.cursor() as cursor:
         query: str = '''\
 SELECT 1 FROM auto_purge WHERE broadcaster=? AND twitchUser=?
 '''
@@ -60,5 +63,5 @@ DELETE FROM auto_purge WHERE broadcaster=? AND twitchUser=?
 '''
             await cursor.execute(query, (args.chat.channel, twitchUser))
             args.chat.send(f'Disabled Auto-Purge on {nick}')
-        await args.database.commit()
+        await db.commit()
     return True
