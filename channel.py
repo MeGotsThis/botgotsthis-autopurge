@@ -1,6 +1,6 @@
 ﻿import aioodbc.cursor  # noqa: F401
 
-from typing import Optional, Tuple  # noqa: F401
+from typing import Dict, Optional, Tuple  # noqa: F401
 
 from lib.data import ChatCommandArgs
 from lib.database import DatabaseMain
@@ -8,27 +8,22 @@ from lib.helper import timeout
 from lib.helper.chat import feature, min_args
 from lib.helper.chat import permission
 from lib.helper import parser
+from . import library
 
 
 @feature('autopurge')
 @permission('bannable')
 @permission('chatModerator')
 async def filterAutoPurge(args: ChatCommandArgs) -> bool:
-    db: DatabaseMain
-    cursor: aioodbc.cursor.Cursor
-    async with DatabaseMain.acquire() as db, await db.cursor() as cursor:
-        query: str = '''
-SELECT stopcommands FROM auto_purge WHERE broadcaster=? AND twitchUser=?
-'''
-        await cursor.execute(query, (args.chat.channel, args.nick.lower()))
-        row: Optional[Tuple[bool]] = await cursor.fetchone()
-        if row is not None:
-            message: str = f'.timeout {args.nick} 1'
-            args.chat.send(message)
-            await timeout.record_timeout(args.chat, args.nick, message,
-                                         str(args.message), 'autopurge')
-            if row[0] and not args.permissions.owner:
-                return True
+    purges: Dict[str, bool]
+    purges = await library.get_auto_purges(args.chat.channel, args.data)
+    if args.nick in purges:
+        message: str = f'.timeout {args.nick} 1'
+        args.chat.send(message)
+        await timeout.record_timeout(args.chat, args.nick, message,
+                                     str(args.message), 'autopurge')
+        if purges[args.nick] and not args.permissions.owner:
+            return True
     return False
 
 
@@ -64,4 +59,5 @@ DELETE FROM auto_purge WHERE broadcaster=? AND twitchUser=?
             await cursor.execute(query, (args.chat.channel, twitchUser))
             args.chat.send(f'Disabled Auto-Purge on {nick}')
         await db.commit()
+        await library.reset_auto_purges(args.chat.channel, args.data)
     return True
